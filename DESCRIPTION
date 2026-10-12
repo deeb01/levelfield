@@ -1,0 +1,25 @@
+Package: levelfield
+Title: Check That Compared Methods Ran on Equal Footing
+Version: 0.1.0
+Authors@R:
+    person("Ahmed", "Eldeeb", email = "a.eldeeb@gmail.com",
+           role = c("aut", "cre"))
+Description: Tools for checking a benchmark comparison before reading it.
+    Records the arguments each compared method actually passed to the
+    functions it called, defaults included; reports the settings that differ
+    between methods; audits each method's settings against recorded tuning
+    evidence to find methods running away from their own measured best; and
+    measures the optimism of choosing a setting on the same data it is scored
+    on. Works on benchmark code written as plain functions, without requiring
+    a modelling framework.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Depends:
+    R (>= 4.1)
+Imports:
+    stats
+Suggests:
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.2
