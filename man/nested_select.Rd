@@ -2,7 +2,7 @@
 % Please edit documentation in R/select.R
 \name{nested_select}
 \alias{nested_select}
-\title{Choose a setting on one window, score it on another, and price the peek}
+\title{Choose a setting on one data set, score it on another, and price the peek}
 \usage{
 nested_select(grid, select_score, eval_score, summary = mean)
 }
@@ -10,10 +10,10 @@ nested_select(grid, select_score, eval_score, summary = mean)
 \item{grid}{Candidate values, as a vector or list.}
 
 \item{select_score}{Function of one candidate returning per-unit scores on
-the selection window. Lower is better.}
+the selection set. Lower is better.}
 
 \item{eval_score}{Function of one candidate returning per-unit scores on the
-evaluation window, with units in the same order as \code{select_score}.}
+evaluation set, with units in the same order as \code{select_score}.}
 
 \item{summary}{Function reducing per-unit scores to the statistic used for
 selection.}
@@ -25,20 +25,23 @@ candidate's selection and evaluation statistic), \code{chosen}, \code{oracle},
 negative), \code{optimism_t} (paired over units), and \code{agreed}.
 }
 \description{
-Selects the best value of a setting on a selection window, scores that
-choice on a later evaluation window the selection never saw, and compares
-it with the \emph{oracle}: the value that would have been chosen by looking at
-the evaluation window itself. The difference is the optimism of the common
+Selects the best value of a setting on a selection set, scores that choice
+on a separate evaluation set the selection never saw, and compares it with
+the \emph{oracle}: the value that would have been chosen by looking at the
+evaluation set itself. The difference is the optimism of the common
 practice of tuning on the data a result is then reported on.
 }
 \details{
-A setting chosen on the evaluation window is not comparable with
-one chosen by a procedure that never sees that window, such as REML or
+The two sets can be anything: a validation and a test split for
+independent data, or two time windows for a series.
+
+A setting chosen on the evaluation set is not comparable with one
+chosen by a procedure that never sees that set, such as REML or
 cross-validation on training data. Comparing the two measures the
 protocol rather than the methods. \code{optimism} puts a number on that.
 
-For time series, \code{\link[=origin_windows]{origin_windows()}} gives the two windows with the
-selection window one horizon before the evaluation window.
+For time series, \code{\link[=origin_windows]{origin_windows()}} gives the two sets as windows, with
+the selection window one horizon before the evaluation window.
 }
 \examples{
 set.seed(1)

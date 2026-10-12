@@ -1,16 +1,19 @@
-#' Choose a setting on one window, score it on another, and price the peek
+#' Choose a setting on one data set, score it on another, and price the peek
 #'
-#' Selects the best value of a setting on a selection window, scores that
-#' choice on a later evaluation window the selection never saw, and compares
-#' it with the *oracle*: the value that would have been chosen by looking at
-#' the evaluation window itself. The difference is the optimism of the common
+#' Selects the best value of a setting on a selection set, scores that choice
+#' on a separate evaluation set the selection never saw, and compares it with
+#' the *oracle*: the value that would have been chosen by looking at the
+#' evaluation set itself. The difference is the optimism of the common
 #' practice of tuning on the data a result is then reported on.
+#'
+#' The two sets can be anything: a validation and a test split for
+#' independent data, or two time windows for a series.
 #'
 #' @param grid Candidate values, as a vector or list.
 #' @param select_score Function of one candidate returning per-unit scores on
-#'   the selection window. Lower is better.
+#'   the selection set. Lower is better.
 #' @param eval_score Function of one candidate returning per-unit scores on the
-#'   evaluation window, with units in the same order as `select_score`.
+#'   evaluation set, with units in the same order as `select_score`.
 #' @param summary Function reducing per-unit scores to the statistic used for
 #'   selection.
 #'
@@ -19,13 +22,13 @@
 #'   `optimism` (evaluation statistic at `chosen` minus at `oracle`, never
 #'   negative), `optimism_t` (paired over units), and `agreed`.
 #'
-#' @details A setting chosen on the evaluation window is not comparable with
-#'   one chosen by a procedure that never sees that window, such as REML or
+#' @details A setting chosen on the evaluation set is not comparable with one
+#'   chosen by a procedure that never sees that set, such as REML or
 #'   cross-validation on training data. Comparing the two measures the
 #'   protocol rather than the methods. `optimism` puts a number on that.
 #'
-#'   For time series, [origin_windows()] gives the two windows with the
-#'   selection window one horizon before the evaluation window.
+#'   For time series, [origin_windows()] gives the two sets as windows, with
+#'   the selection window one horizon before the evaluation window.
 #'
 #' @references Cawley, G. C. and Talbot, N. L. C. (2010). On over-fitting in
 #'   model selection and subsequent selection bias in performance evaluation.
@@ -69,7 +72,7 @@ nested_select <- function(grid, select_score, eval_score, summary = mean) {
 
 #' @export
 print.levelfield_select <- function(x, ...) {
-  cat(sprintf("<levelfield_select> chose %s on the selection window; the oracle is %s\n",
+  cat(sprintf("<levelfield_select> chose %s on the selection set; the oracle is %s\n",
               .render(x$chosen), .render(x$oracle)))
   if (x$agreed) cat("  selection agrees with the oracle: optimism 0\n")
   else cat(sprintf("  optimism %.4g (paired t %.2f): what reporting the oracle would overstate\n",

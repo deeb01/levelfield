@@ -7,6 +7,9 @@ each method against its own tuning results, and measures how much choosing
 settings on the test data inflates a result. It works on benchmark code written
 as plain R functions, with no framework to adopt.
 
+It applies to any comparison of methods in R: models of any kind, solvers,
+simulation studies. Only `origin_windows()` is specific to time series.
+
 ## Why it exists
 
 A benchmark comparison is only as fair as the settings each method ran with, and
@@ -59,8 +62,8 @@ are written.
 | `trace_args()` | Runs each method with chosen functions traced, and records every argument each call received, including defaults nobody wrote |
 | `arg_diffs()` | Lists the settings that differ between methods, and flags any argument one method passed while another fell back to the default |
 | `audit_args()` | Compares each method's settings with a recorded tuning sweep, and reports methods running away from their own best and what that costs |
-| `nested_select()` | Chooses a setting on a window before the test period, and reports how much choosing on the test period itself would have inflated the result |
-| `origin_windows()` | Builds those two windows for a time series |
+| `nested_select()` | Chooses a setting on a selection set, scores it on a separate evaluation set, and reports how much choosing on the evaluation set itself would have inflated the result |
+| `origin_windows()` | For time series: builds a selection window and an evaluation window, the first ending where the second begins |
 
 `arg_diffs()` and `audit_args()` catch different problems. Comparing the methods'
 settings with each other finds settings that differ. It cannot find a setting
@@ -77,7 +80,8 @@ remotes::install_github("deeb01/levelfield")
 ## Example
 
 [`demo/demo.R`](demo/demo.R) runs the comparison above and reproduces every
-number on this page. Tracing both methods shows the cause:
+number on this page. It is a forecasting benchmark, but the functions work the
+same way on any kind of model. Tracing both methods shows the cause:
 
 ```r
 tr <- trace_args(list(new      = function() new_method(y),
@@ -106,7 +110,9 @@ baseline running away from its own best value and prices the gap:
 
 In the same demo, `nested_select()` finds that choosing `lambda` on the window
 before the test period picks the same value as the test period itself would, so
-the inflation is zero. On real data it often is not.
+the inflation is zero. On real data it often is not. For data without a time
+order, the selection and evaluation sets are an ordinary validation and test
+split.
 
 ## How it is tested
 
