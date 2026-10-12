@@ -24,19 +24,27 @@
 #'   significant they are. Pairing can make a negligible difference highly
 #'   significant.
 #' @param summary Function reducing per-unit scores to the statistic that
-#'   decides which setting is best.
+#'   decides which setting is best. It receives finite scores only.
+#' @param nearest When a method used a value of another swept setting that the
+#'   evidence never recorded, hold that setting at the nearest recorded value
+#'   instead. Numeric settings only. With the default, `FALSE`, the setting is
+#'   not held and is listed in `not_held`.
 #'
 #' @return A data frame with one row per (arm, function, setting): `used`,
 #'   `best`, `cost` (the paired mean of score at `used` minus score at `best`,
 #'   so positive is the price of the gap), `t`, `n_units`, `conditioned_on`
-#'   (the other swept settings held at the arm's own values), and `verdict`.
+#'   (the other swept settings held at the arm's own values), `not_held` (swept
+#'   settings that could not be held, because the arm's value is absent from
+#'   the evidence, so the result averages over them), and `verdict`.
 #'
 #' @details When the evidence sweeps several settings jointly, the best value
 #'   of one is found with the others held at the values the arm used. The best
 #'   value of one setting averaged over the others answers a different
-#'   question, and can disagree with the conditional answer. A setting the arm
-#'   used but the evidence never measured is reported as
+#'   question, and can disagree with the conditional answer, so a setting that
+#'   cannot be held is reported in `not_held` and in a warning. A setting the
+#'   arm used but the evidence never measured is reported as
 #'   `"value not in evidence"`; a setting no evidence covers does not appear.
+#'   An `NA` in a setting column is treated as a level of its own.
 #'
 #' @examples
 #' fit <- function(y, lambda = 1) sum(y) / (1 + lambda)
@@ -50,7 +58,7 @@
 #' audit_args(tr, ev)
 #' @export
 audit_args <- function(trace, evidence, score = "score", unit = "unit",
-                       fn = NULL, threshold = 0, summary = mean) {
+                       fn = NULL, threshold = 0, summary = mean, nearest = FALSE) {
   if (!inherits(trace, "levelfield_trace"))
     stop("`trace` must come from trace_args()", call. = FALSE)
   if (!is.data.frame(evidence)) stop("`evidence` must be a data frame", call. = FALSE)
@@ -71,20 +79,37 @@ audit_args <- function(trace, evidence, score = "score", unit = "unit",
     for (s in intersect(settings, unique(tk$arg))) {
       for (u in used_of(s)) {
         sub <- evidence
-        held <- character(0)
+        held <- character(0); not_held <- character(0)
         for (o in setdiff(settings, s)) {
           uo <- used_of(o)
           if (length(uo) != 1L) next
-          keep <- .num_eq(sub[[o]], uo)
-          if (any(keep)) { sub <- sub[keep, , drop = FALSE]; held <- c(held, sprintf("%s = %s", o, uo)) }
+          keep <- which(.num_eq(sub[[o]], uo))
+          if (length(keep)) {
+            sub <- sub[keep, , drop = FALSE]
+            held <- c(held, sprintf("%s = %s", o, uo))
+            next
+          }
+          lv <- suppressWarnings(as.numeric(unique(sub[[o]])))
+          x <- suppressWarnings(as.numeric(uo))
+          if (nearest && is.finite(x) && any(is.finite(lv))) {
+            near <- lv[is.finite(lv)][which.min(abs(lv[is.finite(lv)] - x))]
+            sub <- sub[which(.num_eq(sub[[o]], near)), , drop = FALSE]
+            held <- c(held, sprintf("%s = %s (nearest to %s)", o, format(near), uo))
+          } else {
+            not_held <- c(not_held, sprintf("%s (used %s)", o, uo))
+          }
         }
         rows[[length(rows) + 1L]] <- .audit_one(arm, f, s, u, sub, score, unit,
-                                                 threshold, summary, held)
+                                                 threshold, summary, held, not_held)
       }
     }
   }
   if (!length(rows)) return(.empty_audit())
   out <- do.call(rbind, rows)
+  pooled <- out[nzchar(out$not_held), , drop = FALSE]
+  if (nrow(pooled))
+    warning(sprintf("%d audit row(s) average over a setting the method's value could not be held at, because the evidence never recorded that value; see `not_held`, or use nearest = TRUE",
+                    nrow(pooled)), call. = FALSE)
   rownames(out) <- NULL
   out <- out[order(out$verdict != "OFF ITS BEST", -abs(ifelse(is.na(out$cost), 0, out$cost))), ,
              drop = FALSE]
@@ -92,25 +117,32 @@ audit_args <- function(trace, evidence, score = "score", unit = "unit",
   out
 }
 
-.audit_one <- function(arm, fn, s, used, sub, score, unit, threshold, summary, held) {
+.audit_one <- function(arm, fn, s, used, sub, score, unit, threshold, summary,
+                       held, not_held) {
   lv <- unique(sub[[s]])
-  stat <- vapply(lv, function(v) summary(sub[[score]][.num_eq(sub[[s]], v)]), numeric(1))
+  stat <- vapply(lv, function(v) {
+    x <- sub[[score]][which(.num_eq(sub[[s]], v))]
+    x <- x[is.finite(x)]
+    if (length(x)) summary(x) else NA_real_
+  }, numeric(1))
+  base <- data.frame(arm = arm, fn = fn, arg = s, used = used, best = NA_character_,
+                     cost = NA_real_, t = NA_real_, n_units = NA_integer_,
+                     conditioned_on = paste(held, collapse = ", "),
+                     not_held = paste(not_held, collapse = ", "),
+                     verdict = "no finite scores in evidence", stringsAsFactors = FALSE)
+  if (!any(is.finite(stat))) return(base)
   best <- lv[which.min(stat)]
-  m <- lv[.num_eq(lv, used)]
-  base <- data.frame(arm = arm, fn = fn, arg = s, used = used,
-                     best = as.character(best), cost = NA_real_, t = NA_real_,
-                     n_units = NA_integer_,
-                     conditioned_on = if (length(held)) paste(held, collapse = ", ") else "",
-                     verdict = "value not in evidence", stringsAsFactors = FALSE)
-  if (!length(m)) return(base)
-  a <- sub[.num_eq(sub[[s]], m[1]), c(unit, score)]
-  b <- sub[.num_eq(sub[[s]], best), c(unit, score)]
+  base$best <- as.character(best)
+  m <- which(.num_eq(lv, used))
+  if (!length(m)) { base$verdict <- "value not in evidence"; return(base) }
+  a <- sub[which(.num_eq(sub[[s]], lv[m[1]])), c(unit, score)]
+  b <- sub[which(.num_eq(sub[[s]], best)), c(unit, score)]
   names(a)[2] <- ".used"; names(b)[2] <- ".best"
   z <- merge(a, b, by = unit)
   d <- z$.used - z$.best
   d <- d[is.finite(d)]
   base$n_units <- length(d)
-  if (.num_eq(m[1], best)) { base$cost <- 0; base$verdict <- "at its best"; return(base) }
+  if (.num_eq(lv[m[1]], best)) { base$cost <- 0; base$verdict <- "at its best"; return(base) }
   if (length(d) < 2L) { base$verdict <- "too few paired units"; return(base) }
   se <- stats::sd(d) / sqrt(length(d))
   base$cost <- mean(d)
@@ -123,5 +155,5 @@ audit_args <- function(trace, evidence, score = "score", unit = "unit",
   data.frame(arm = character(0), fn = character(0), arg = character(0),
              used = character(0), best = character(0), cost = numeric(0),
              t = numeric(0), n_units = integer(0), conditioned_on = character(0),
-             verdict = character(0), stringsAsFactors = FALSE)
+             not_held = character(0), verdict = character(0), stringsAsFactors = FALSE)
 }

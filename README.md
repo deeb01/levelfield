@@ -128,10 +128,13 @@ package, because the prototype had only worked by accident.
   seen.
 - Passed arguments are evaluated when the call begins, earlier than a lazily
   evaluating function would evaluate them. Defaults are recorded as written in
-  the function's definition, without being evaluated.
+  the function's definition, without being evaluated, except that a default
+  passed to `match.arg()` is recorded as the value `match.arg()` chooses.
 - `audit_args()` knows only what a sweep measured. A setting no sweep covered
   does not appear, and a sweep's best value holds only under the settings that
-  sweep held fixed.
+  sweep held fixed. When a method used a value of another swept setting that the
+  sweep never recorded, the row says so in `not_held`, and `nearest = TRUE`
+  holds that setting at the nearest recorded value instead.
 
 ## Licence
 

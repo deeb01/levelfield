@@ -11,7 +11,8 @@ audit_args(
   unit = "unit",
   fn = NULL,
   threshold = 0,
-  summary = mean
+  summary = mean,
+  nearest = FALSE
 )
 }
 \arguments{
@@ -35,13 +36,20 @@ significant they are. Pairing can make a negligible difference highly
 significant.}
 
 \item{summary}{Function reducing per-unit scores to the statistic that
-decides which setting is best.}
+decides which setting is best. It receives finite scores only.}
+
+\item{nearest}{When a method used a value of another swept setting that the
+evidence never recorded, hold that setting at the nearest recorded value
+instead. Numeric settings only. With the default, \code{FALSE}, the setting is
+not held and is listed in \code{not_held}.}
 }
 \value{
 A data frame with one row per (arm, function, setting): \code{used},
 \code{best}, \code{cost} (the paired mean of score at \code{used} minus score at \code{best},
 so positive is the price of the gap), \code{t}, \code{n_units}, \code{conditioned_on}
-(the other swept settings held at the arm's own values), and \code{verdict}.
+(the other swept settings held at the arm's own values), \code{not_held} (swept
+settings that could not be held, because the arm's value is absent from
+the evidence, so the result averages over them), and \code{verdict}.
 }
 \description{
 Joins the settings each arm actually used, from \code{\link[=trace_args]{trace_args()}}, to recorded
@@ -58,9 +66,11 @@ difference.
 When the evidence sweeps several settings jointly, the best value
 of one is found with the others held at the values the arm used. The best
 value of one setting averaged over the others answers a different
-question, and can disagree with the conditional answer. A setting the arm
-used but the evidence never measured is reported as
+question, and can disagree with the conditional answer, so a setting that
+cannot be held is reported in \code{not_held} and in a warning. A setting the
+arm used but the evidence never measured is reported as
 \code{"value not in evidence"}; a setting no evidence covers does not appear.
+An \code{NA} in a setting column is treated as a level of its own.
 }
 \examples{
 fit <- function(y, lambda = 1) sum(y) / (1 + lambda)

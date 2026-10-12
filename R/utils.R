@@ -29,10 +29,19 @@
   if (is.call(e) || is.name(e)) paste(deparse(e), collapse = " ") else .render(e)
 }
 
+# Equality for settings, as a logical vector with no NA in it. An NA level
+# matches NA (sweeps often record a switched-off component that way), and the
+# string "NA" -- how trace_args() renders an NA -- counts as NA too.
 .num_eq <- function(a, b) {
-  na <- suppressWarnings(as.numeric(a)); nb <- suppressWarnings(as.numeric(b))
-  ifelse(!is.na(na) & !is.na(nb), abs(na - nb) <= 1e-9 * pmax(1, abs(na)),
-         as.character(a) == as.character(b))
+  is_na <- function(x) is.na(x) | (is.character(x) & x %in% "NA")
+  na_a <- is_na(a); na_b <- is_na(b)
+  xa <- suppressWarnings(as.numeric(a)); xb <- suppressWarnings(as.numeric(b))
+  out <- ifelse(!is.na(xa) & !is.na(xb), abs(xa - xb) <= 1e-9 * pmax(1, abs(xa)),
+                as.character(a) == as.character(b))
+  out[na_a & na_b] <- TRUE
+  out[xor(na_a, na_b)] <- FALSE
+  out[is.na(out)] <- FALSE
+  out
 }
 
 .check_arms <- function(arms) {
@@ -43,4 +52,25 @@
   if (!all(vapply(arms, is.function, logical(1))))
     stop("every element of `arms` must be a function taking no arguments",
          call. = FALSE)
+}
+
+# The choices of a match.arg-style default, c("a", "b", ...): a call to c()
+# whose arguments are all single strings. NULL for anything else.
+.choices <- function(e) {
+  if (!is.call(e) || !identical(e[[1]], as.name("c")) || length(e) < 2L) return(NULL)
+  args <- as.list(e)[-1]
+  if (!all(vapply(args, function(x) is.character(x) && length(x) == 1L, logical(1)))) return(NULL)
+  unlist(args)
+}
+
+# Does a function body pass argument `a` to match.arg()?
+# Parts are indexed rather than assigned to a variable: a call such as x[, 1]
+# contains the empty symbol, and a variable holding it errors when touched.
+.uses_match_arg <- function(expr, a) {
+  if (!is.call(expr)) return(FALSE)
+  if (identical(expr[[1]], as.name("match.arg")) && length(expr) >= 2L &&
+      identical(expr[[2]], as.name(a))) return(TRUE)
+  for (i in seq_along(expr)[-1])
+    if (is.call(expr[[i]]) && .uses_match_arg(expr[[i]], a)) return(TRUE)
+  FALSE
 }

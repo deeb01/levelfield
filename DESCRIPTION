@@ -1,6 +1,6 @@
 Package: levelfield
 Title: Check That Compared Methods Ran on Equal Footing
-Version: 0.1.0
+Version: 0.1.1
 Authors@R:
     person("Ahmed", "Eldeeb", email = "a.eldeeb@gmail.com",
            role = c("aut", "cre"))
@@ -19,6 +19,7 @@ Depends:
 Imports:
     stats
 Suggests:
+    pkgload,
     testthat (>= 3.0.0)
 Config/testthat/edition: 3
 Roxygen: list(markdown = TRUE)

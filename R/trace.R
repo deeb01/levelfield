@@ -64,6 +64,13 @@ trace_args <- function(arms, fns, where = parent.frame()) {
 
   out <- .collect(log$rows)
   attr(out, "errors") <- errors
+  # An arm that reached no traced function contributes no rows, and an empty
+  # trace reads exactly like "the arms agree". Say so.
+  silent <- setdiff(names(arms), c(unique(out$arm), names(errors)))
+  attr(out, "untraced") <- silent
+  if (length(silent))
+    warning(sprintf("%d arm(s) made no call to a traced function: %s. Check the names in `fns`, and that the arm calls the function by that name.",
+                    length(silent), paste(silent, collapse = ", ")), call. = FALSE)
   if (length(errors))
     warning(sprintf("%d arm(s) raised an error and are partly traced: %s",
                     length(errors), paste(names(errors), collapse = ", ")),
@@ -130,7 +137,7 @@ print.levelfield_trace <- function(x, ...) {
     pkg <- parts[1]; nm <- parts[length(parts)]
     if (!exists(nm, envir = asNamespace(pkg), inherits = FALSE))
       stop(sprintf("`%s` is not in the namespace of %s", nm, pkg), call. = FALSE)
-    return(list(label = spec, name = nm, where = .package_where(pkg)))
+    return(list(label = spec, name = nm, where = .package_where(pkg, nm)))
   }
   env <- where
   while (!identical(env, emptyenv()) && !exists(spec, envir = env, inherits = FALSE))
@@ -141,18 +148,28 @@ print.levelfield_trace <- function(x, ...) {
   # An unqualified name that resolves into a package is traced as one.
   nm_env <- environmentName(env)
   if (startsWith(nm_env, "package:"))
-    return(list(label = spec, name = spec, where = .package_where(sub("^package:", "", nm_env))))
+    return(list(label = spec, name = spec, where = .package_where(sub("^package:", "", nm_env), spec)))
   if (isNamespace(env))
-    return(list(label = spec, name = spec, where = .package_where(getNamespaceName(env))))
-  list(label = spec, name = spec, where = env)
+    return(list(label = spec, name = spec, where = .package_where(getNamespaceName(env), spec)))
+  list(label = spec, name = spec, where = list(env))
 }
 
-# Trace through the attached package environment when there is one: R then
-# modifies the namespace and the exported copy together. Tracing the namespace
-# alone misses calls made through the attached copy.
-.package_where <- function(pkg) {
-  if (paste0("package:", pkg) %in% search()) as.environment(paste0("package:", pkg))
-  else asNamespace(pkg)
+# A package function can live in two places: its namespace, which every
+# `pkg::fn` call and every call from inside the package reads, and the attached
+# package environment, which an unqualified call from a script reads. Both are
+# traced, separately.
+#
+# Tracing only the attached copy is not enough. R carries a trace from the
+# attached copy into the namespace only when the attached binding is LOCKED,
+# which library() does and pkgload::load_all() does not. Under load_all a trace
+# through the attached copy alone misses every `pkg::fn` call -- and returns an
+# empty trace, which reads exactly like "the arms agree".
+.package_where <- function(pkg, name) {
+  out <- list(asNamespace(pkg))
+  att <- paste0("package:", pkg)
+  if (att %in% search() && exists(name, envir = as.environment(att), inherits = FALSE))
+    out <- c(out, list(as.environment(att)))
+  out
 }
 
 # trace() inserts a CALL to its tracer into the traced function's body and
@@ -162,12 +179,14 @@ print.levelfield_trace <- function(x, ...) {
 # environment, false for one built here. Inlining the function object into the
 # call removes the lookup.
 .trace_on <- function(tg, tracer) {
-  suppressMessages(trace(tg$name, tracer = as.call(list(tracer)),
-                         where = tg$where, print = FALSE))
+  for (w in tg$where)
+    suppressMessages(trace(tg$name, tracer = as.call(list(tracer)),
+                           where = w, print = FALSE))
 }
 
 .trace_off <- function(tg) {
-  try(suppressMessages(untrace(tg$name, where = tg$where)), silent = TRUE)
+  for (w in tg$where)
+    try(suppressMessages(untrace(tg$name, where = w)), silent = TRUE)
 }
 
 # The tracer runs inside the traced call: R's .doTrace evaluates it in that
@@ -188,7 +207,15 @@ print.levelfield_trace <- function(x, ...) {
       } else {
         d <- deparse(fml[[a]])
         if (!nzchar(d[1])) { v <- "<missing>"; src <- "missing" }
-        else { v <- .render_default(fml[[a]]); src <- "default" }
+        else {
+          # A default written as c("a", "b") and passed to match.arg() runs as
+          # its first element. Recording the whole vector would never match
+          # evidence that recorded the value actually used.
+          ch <- .choices(fml[[a]])
+          v <- if (!is.null(ch) && .uses_match_arg(body(sys.function(sys.parent())), a))
+                 ch[1] else .render_default(fml[[a]])
+          src <- "default"
+        }
       }
       log$rows[[length(log$rows) + 1L]] <-
         c(arm = log$arm, fn = label, arg = a, value = v, source = src)
